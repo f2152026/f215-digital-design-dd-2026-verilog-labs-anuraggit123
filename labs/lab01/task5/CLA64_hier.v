@@ -1,31 +1,3 @@
-// cla64_hier.v
-// BONUS -- open-ended. No detailed scaffold is provided; this is meant to
-// be a genuine design exercise. Not required for lab submission.
-//
-// You will likely need to modify cla4.v (or add signals alongside it) so
-// that block-generate/block-propagate summaries of its own Gi, Pi signals
-// are exposed as outputs, since the second-level lookahead unit below
-// needs them. As with every module in this lab from Task 2 onward, every
-// gate/assign you add should carry an explicit delay.
-//
-// Starting point (from Tutorial 3, Q4(d)):
-//   - Reuse 16 four-bit CLA blocks (your cla4.v) -- their internal logic
-//     doesn't change.
-//   - For each block k, define:
-//       Gblk_k = "this block produces a carry regardless of its incoming
-//                 carry" -- a Boolean function of that block's own 4
-//                 bit-level Gi, Pi signals.
-//       Pblk_k = "an incoming carry sails straight through this whole
-//                 block" -- likewise a function of its own Gi, Pi.
-//   - Build a second-level lookahead unit -- structurally identical to
-//     cla4.v, just one level up -- that computes each block's carry-in
-//     directly from Gblk_0..Gblk_15, Pblk_0..Pblk_15, and cin, instead of
-//     rippling block to block.
-//
-// To test this, wire it into dut.v as a fourth option (copy the pattern
-// used for the other three) and run it through the same tb.v. Compare
-// your final delay to cla64_blocked.v from Task 4.
-
 module cla64_hier(
   input  [63:0] a,
   input  [63:0] b,
@@ -34,6 +6,47 @@ module cla64_hier(
   output        cout
 );
 
-  // TODO: your hierarchical design goes here.
+  wire [63:0] p, g;
+  wire [16:0] c;
+
+  genvar i;
+
+  // Generate and propagate
+  generate
+    for (i = 0; i < 64; i = i + 1) begin : gen_pg
+      xor #(2) (p[i], a[i], b[i]);
+      and #(2) (g[i], a[i], b[i]);
+    end
+  endgenerate
+
+  // Carry into bit 0
+  assign #(2) c[0] = cin;
+
+  // Carry calculation for every bit
+  generate
+    for (i = 0; i < 16; i = i + 1) begin : gen_carry
+      assign #(2) c[i+1] =
+          g[4*i+3] |
+          (p[4*i+3] & g[4*i+2]) |
+          (p[4*i+3] & p[4*i+2] & g[4*i+1]) |
+          (p[4*i+3] & p[4*i+2] & p[4*i+1] & g[4*i]) |
+          (p[4*i+3] & p[4*i+2] & p[4*i+1] & p[4*i] & c[i]);
+    end
+  endgenerate
+
+  // 16 four-bit CLA blocks
+  generate
+    for (i = 0; i < 16; i = i + 1) begin : gen_cla
+      cla4 FA (
+        .a(a[4*i+3:4*i]),
+        .b(b[4*i+3:4*i]),
+        .cin(c[i]),
+        .sum(sum[4*i+3:4*i]),
+        .cout()
+      );
+    end
+  endgenerate
+
+  assign #(2) cout = c[16];
 
 endmodule
